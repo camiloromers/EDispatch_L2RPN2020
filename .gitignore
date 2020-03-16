@@ -127,3 +127,12 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Add iPython checkpoints
+.ipynb_checkpoints
+
+# Avoid OPF rel
+OPF_rel/*
+
+# Delete DS_Store
+.DS_Store
