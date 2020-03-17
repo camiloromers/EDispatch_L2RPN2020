@@ -20,12 +20,12 @@ from utils import add_noise_gen
 PYPSA_CASE = './L2RPN_2020_ieee_118_pypsa_simplified'
 REF_DATA_DIR = './reference_data'
 DESTINATION_PATH = './OPF_rel/'
-MODE_OPF = 'day'    # Can be: 'day', 'week', 'month', 'year'
-RESCALED_MIN = 10
+MODE_OPF = 'week'    # Can be: 'day', 'week', 'month', 'year'
+RESCALED_MIN = 5    # Every timr OPF will be run it
 YEAR_OPF = 2007
-MONTH_START = 1
-MONTH_END = 1
-COMPENSATE_REACTIVE = 1.025
+MONTH_START = 1     # Initial mmonth
+MONTH_END = 1       # End month 
+COMPENSATE_REACTIVE = 1.025   # Scale for load to compensate reactive power
 # -------------
 
 
@@ -47,26 +47,6 @@ for month in range(MONTH_START, MONTH_END + 1):
                                                                                   RESCALED_MIN,
                                                                                  )
   load_p_resampled *= COMPENSATE_REACTIVE
-
-  # def run_unit_commitment(net, df, mode):
-  #   # Show info when running opf
-  #   to_disp = {'day': df.index.day.unique().values[0],
-  #              'week': df.index.week.unique().values[0],
-  #              'month': df.index.month.unique().values[0],
-  #              'year': df.index.year.unique().values[0],
-  #   }
-  #   print(f'\n--> OPF mode: {mode} - Analyzing {mode} # {to_disp[mode]}')
-  #   # Get new snapshots and set them up
-  #   snapshots = df.index
-  #   # Fill constrains on the grid -> wind, solar, nuclear
-  #   net = fill_constrains_grid(net, snapshots, df, wind_resampled, solar_resampled,)
-  #   # Run Linear OPF
-  #   rel = net.lopf(net.snapshots, pyomo=False, solver_name='cbc')
-  #   if rel[1] != 'optimal': 
-  #     sys.exit()
-  #   # Get the values
-  #   full_opf_rel = net.generators_t.p.copy()
-  #   return full_opf_rel
 
   period_dict = {'day': load_p_resampled.groupby(load_p_resampled.index.day),
                  'week': load_p_resampled.groupby(load_p_resampled.index.week),
