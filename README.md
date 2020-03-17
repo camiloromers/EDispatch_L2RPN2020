@@ -3,8 +3,8 @@
 This repo contains a simple Economic Dispatch using PyPSA for the IEEE 118 grid. <br>
 Please take into consideration the following: <br>
  - The synthetic data generation (chronics) a full Grid2OP comptability is recommended when grid is created to avoid discordances with gen, load, line headers.
-  - For now, Texas consumption, wind and solar is imposed to the grid.
-  - Users might imposed ***one single optimization formulation*** for day, week, month and year. However, the last one is not recommended because of time-consuming.
+  - For now, Texas consumption, wind and solar are imposed to the grid.
+  - Users might use ***one single optimization formulation*** for day, week, month and year. However, the last one is not recommended because of time-consuming.
 
 ## Requierments
 - Pandas
@@ -22,7 +22,7 @@ python -m pip install -e
 For installing CBC, please follow the instructions on https://github.com/coin-or/Cbc. In summary:
  - ***Linux***: On Debian/Ubuntu, Cbc is available in the package `coinor-cbc` and can be installed with apt. On Fedora, Cbc is available in the package `coin-or-Cbc`.
 - ***Windows***: The easiest way to get Cbc on Windows is to download from [Bintray](https://bintray.com/coin-or/download/Cbc), although an old interactive installer for the [COIN-OR Optimization Suite](https://www.coin-or.org/download/binary/CoinAll/) is also still available.
-- Mac OS X: The easiest way to get Cbc on Mac OS X is through Homebrew.
+- ***Mac OS X***: The easiest way to get Cbc on Mac OS X is through Homebrew.
     - `brew tap coin-or-tools/coinor`
     - `brew install cbc`
 
