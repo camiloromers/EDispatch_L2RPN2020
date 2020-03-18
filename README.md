@@ -16,10 +16,15 @@ Please take into consideration the following: <br>
      - *Nicola's version (Windows) 1.7.4*
 
 For installing PyPSA, please do the following steps: <br>
+PypSA has been added as a "submodule" of this package, to install the last version on github do:
+
 ```
-git clone https://github.com/PyPSA/PyPSA.git
-cd /path/to/PyPSA/ 
-python -m pip install -e
+# git clone https://github.com/PyPSA/PyPSA.git
+# cd /path/to/PyPSA/ 
+# python -m pip install -e
+git submodule init
+git submodule update
+pip install -U PyPsa
 ```
 For installing CBC, please follow the instructions on https://github.com/coin-or/Cbc. In summary:
  - ***Linux***: On Debian/Ubuntu, Cbc is available in the package `coinor-cbc` and can be installed with apt. On Fedora, Cbc is available in the package `coin-or-Cbc`.
