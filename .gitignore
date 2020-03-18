@@ -139,3 +139,4 @@ OPF_rel/*
 
 # Avoid 7 years generation
 generation_chronics_7_years.py
+.idea

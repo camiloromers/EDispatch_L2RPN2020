@@ -35,16 +35,42 @@ For installing CBC, please follow the instructions on https://github.com/coin-or
 
 ## Usage
 Before running the code. Open the code `run_economic_dispatch.py` and modify as you want the next variables:
- - `MODE_OPF` [period] (day, week, month, year) -> It will create one single formulation in PyPSA and then OPF will be running in a ***for loop*** for consecutives periods.
- - `RESCALED_MIN` [min] (multiples of five) -> The time OPF runs inside a period (Can be 5, 10, 15, 20, 30, 60)
+ - [DEPRECATED] `MODE_OPF` [period] (day, week, month, year) -> It will create one single formulation in PyPSA and then OPF will be running in a ***for loop*** for consecutives periods.
+ - [DEPRECATED] `RESCALED_MIN` [min] (multiples of five) -> The time OPF runs inside a period (Can be 5, 10, 15, 20, 30, 60)
  - `MONTH_START` [int] -> Reference data is only is adapted for 2007 year. OPF will be initialized at the month you specify.
   - `MONTH_END` [int] -> Reference data is only is adapted for 2007 year. OPF will be end at the month you specify.
+
 
   To run the script, open the Terminal: <br>
   ```
   cd path/to/EDispatch_L2RPN2020
-  python run_economic_dispatch.py
+  python run_economic_dispatch.py --help
   ```
+You will be able to modify, from the command line argument, the "mode_opf" and "rescaled_min". For example, if you want
+to perform a daily optimization, at a five minute resolution you can:
+```bash
+python run_economic_dispatch.py --mode_opf="day" --rescaled_min=5
+```
+These are also valid values:
+```bash
+python run_economic_dispatch.py --mode_opf="month" --rescaled_min=15
+```
+
+## times taken
+In the file "times.csv" (Benjamin) reported some times to perform the optimization on the month of January on an Ubuntu
+desktop. Optimization is carried out using CBC solver for the 31 days of january.
+
+This csv (separated with coma "," and with "." as decimal separator) counts 5 columns:
+- `mode_opf`: the mode_opf used (among "day", "week" or "month")
+- `rescaled_min`: the rescaled_min used (integer multiple of 5)
+- `total_time`: total time taken (in second): what is output after the programm finished (*eg* 
+  "Total time 8.97 min" -> it is then 538.2s -- which corresponds to 8.97 mins)
+- `total_opt`: total number of optimization performed (for example, 
+  if you ask a daily optimization, for the month of january, you get
+  31, because there are 31 days in january)
+- `avg_time`: average time (in second) for each optimization (computed by dividing total time with total opt)
+
+
 
 
 
