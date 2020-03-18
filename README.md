@@ -7,11 +7,13 @@ Please take into consideration the following: <br>
   - Users might use ***one single optimization formulation*** for day, week, month and year. However, the last one is not recommended because of time-consuming.
 
 ## Requierments
-- Pandas
-- Numpy
-- PyPSA
+- Pandas >= 0.25.3
+- Numpy >= 1.18.1
+- PyPSA == 0.16.1
 - Python 3.x
 - CBC Solver (recommended)
+     - *Camilo's version (Mac) stable 2.10.3*
+     - *Nicola's version (Windows) 1.7.4*
 
 For installing PyPSA, please do the following steps: <br>
 ```
