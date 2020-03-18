@@ -6,7 +6,7 @@ Please take into consideration the following: <br>
   - For now, Texas consumption, wind and solar are imposed to the grid.
   - Users might use ***one single optimization formulation*** for day, week, month and year. However, the last one is not recommended because of time-consuming.
 
-## Requierments
+## Requirements
 - Pandas >= 0.25.3
 - Numpy >= 1.18.1
 - PyPSA == 0.16.1
