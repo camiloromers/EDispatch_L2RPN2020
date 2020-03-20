@@ -84,6 +84,7 @@ def run_unit_commitment(net, mode, demand, wind, solar):
                                solar_by_period
                                )
     # Run Linear OPF
+    net.generators = net.generators[~(net.generators.carrier.isin(['solar','wind']))]
     rel = net.lopf(net.snapshots, pyomo=False, solver_name='cbc')
     if rel[1] != 'optimal': 
         print ('Not convergenced......')

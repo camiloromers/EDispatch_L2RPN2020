@@ -18,10 +18,10 @@ from utils import add_noise_gen
 
 # Vars to set up...
 PYPSA_CASE = './L2RPN_2020_ieee_118_pypsa_simplified'
-REF_DATA_DIR = './reference_data'
+REF_DATA_DIR = './test_data'
 DESTINATION_PATH = './OPF_rel/'
-MODE_OPF = 'week'    # Can be: 'day', 'week', 'month', 'year'
-RESCALED_MIN = 5    # Every timr OPF will be run it
+MODE_OPF = 'day'    # Can be: 'day', 'week', 'month', 'year'
+RESCALED_MIN = 5    # Every time OPF will be run it
 YEAR_OPF = 2007
 MONTH_START = 1     # Initial mmonth
 MONTH_END = 1       # End month 
