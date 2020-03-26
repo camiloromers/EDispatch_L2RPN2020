@@ -13,7 +13,7 @@ from .utils import rescale_gen_param
 from .utils import run_unit_commitment
 # from utils import interpolate
 from .utils import add_noise_gen
-from .utils import validate_gen_constraints
+from .utils import reformat_gen_constraints
 # from utils import generate_prod_voltage
 # from utils import generate_reactive_loads
 # from utils import generate_hazard_maintenance
@@ -32,21 +32,25 @@ RESCALED_MIN = 5    # Every timr OPF will be run it
 YEAR_OPF = 2007
 MONTH_START = 1     # Initial mmonth
 MONTH_END = 1       # End month 
-COMPENSATE_REACTIVE = 1.025   # Scale for load to compensate reactive power
+COMPENSATE_REACTIVE =   # Scale for load to compensate reactive power
 
 
 def run_disptach(pypsa_net, 
                  load,
-                 mode_opf=MODE_OPF, 
-                 rescaled_min=RESCALED_MIN,
+                 mode_opf='day', 
+                 rescaled_min=5,
                  gen_constraints={'p_max_pu': None, 'p_min_pu': None},
-                 year_data=YEAR_OPF,
+                 load_factor=1.025 ,
                  MONTH_START=1,
-                 MONTH_END=1,
-                 load_factor=COMPENSATE_REACTIVE
+                 MONTH_END=None,
                 ):
 
+    # OPF will run until the last month registered in load or demand
+    if MONTH_END is None:
+        MONTH_END = load.index.month.unique()[-1]
+
     # Load demand
+    year_data = 2007
     snapshots = pd.date_range(start=f'{year_data}-01-01', periods=load.shape[0], freq='5min')
     load.index = snapshots
 
@@ -55,51 +59,45 @@ def run_disptach(pypsa_net,
     load_resampled *= load_factor
 
     # Validate gen constraints to be imposed in the opf
-    val_gen_const = validate_gen_constraints(gen_constraints, rescaled_min, snapshots)
+    gen_constraints = reformat_gen_constraints(gen_constraints, 
+                                               rescaled_min, 
+                                               snapshots)
 
-    # OPF will run until the last month registered in load or demand
-    if MONTH_END is None:
-        MONTH_END = load.index.month.unique()[-1]
-    
-    start = time.time()
-    for month in range(MONTH_START, MONTH_END + 1):
-
-      pypsa_net = rescale_gen_param(pypsa_net, rescaled_min)
+    # Scale gen properties (ramps up/down)
+    pypsa_net = rescale_gen_param(pypsa_net, rescaled_min)
 
     # Define period to run OPF
-      period_dict = {'day': load_resampled.groupby(load_resampled.index.day),
-                     'week': load_resampled.groupby(load_resampled.index.week),
-                     'month': load_resampled.groupby(load_resampled.index.month),
-      }
+    period_dict = {'day': load_resampled.groupby(load_resampled.index.day),
+                   'week': load_resampled.groupby(load_resampled.index.week),
+                   'month': load_resampled.groupby(load_resampled.index.month),
+    }
 
-      results = []
-      for _, demand_by_period in period_dict[mode_opf]:
-          results.append(run_unit_commitment(pypsa_net,
-                                             mode_opf,
-                                             demand_by_period,
-                                             val_gen_const,
-                                             )
-                        )
+    start = time.time()
+    for _ in range(MONTH_START, MONTH_END + 1):
+        results = []
+        for _, demand_by_period in period_dict[mode_opf]:
+            results.append(run_unit_commitment(pypsa_net,
+                                                mode_opf,
+                                                demand_by_period,
+                                                gen_constraints,
+                                                )
+                            )
 
-      # Unpack dispatch over list to concatenate partial dfs
-      opf_prod = pd.DataFrame()
-      for df in results:
-          opf_prod = pd.concat([opf_prod, df], axis=0)
+    # Unpack dispatch over list to concatenate partial dfs
+    opf_prod = pd.DataFrame()
+    for df in results:
+        opf_prod = pd.concat([opf_prod, df], axis=0)
 
-      # Sort by datetime
-      opf_prod.sort_index(inplace=True)
+    # Sort by datetime
+    opf_prod.sort_index(inplace=True)
 
-      # ----------------------------
-      # Generate csv's
-      # ----------------------------
-      print ('\nGenerating csv...')
-      # Create complete prod_p dataframe and interpolate missing rows
+    # Create complete prod_p dataframe and interpolate missing rows
     #   prod_p = interpolate(opf_prod, ref_index=tot_snapshots, method='cubic')
-      prod_p = opf_prod.copy()
+    prod_p = opf_prod.copy()
 
-      # Add noise to results
-      gen_cap = pypsa_net.generators.p_nom
-      prod_p_with_noise = add_noise_gen(prod_p, gen_cap, noise_factor=0.001)
+    # Add noise to results
+    gen_cap = pypsa_net.generators.p_nom
+    prod_p_with_noise = add_noise_gen(prod_p, gen_cap, noise_factor=0.001)
 
       # # Generate voltage set points
       # vol_vals = net.buses.loc[net.generators.bus, 'v_nom'] * 1.035
