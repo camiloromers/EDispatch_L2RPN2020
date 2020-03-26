@@ -32,11 +32,11 @@ def import_data(data_path, from_date, end_date, every_min):
     load_rscl = load.loc[from_date : end_date].resample(f'{str(every_min)}min').apply(lambda x: x[0])
     solar_rscl = solar.loc[from_date : end_date].resample(f'{str(every_min)}min').apply(lambda x: x[0])
     wind_rscl = wind.loc[from_date : end_date].resample(f'{str(every_min)}min').apply(lambda x: x[0])
-    # load = load.loc[from_date : end_date]
+    load = load.loc[from_date : end_date]
     snapshots = load.index
     return wind_rscl, solar_rscl, load_rscl, snapshots
 
-def prepare_grid(net, every_min, grid_params=5):
+def rescale_gen_param(net, every_min, grid_params=5):
     # Adapt ramps according to the time 
     steps = every_min / grid_params
     net.generators.loc[:, ['ramp_limit_up', 'ramp_limit_down']] *= steps
@@ -63,19 +63,22 @@ def fill_constrains_grid(net, snapshots, trunc_load, trunc_wind, trunc_solar):
         net.generators_t.p_min_pu[c] = 0.4
     return net
 
-def run_unit_commitment(net, mode, demand, wind, solar):
+def run_unit_commitment(net, mode, demand, wind=None, solar=None):
     # Show info when running opf
     to_disp = {'day': demand.index.day.unique().values[0],
                'week': demand.index.week.unique().values[0],
                'month': demand.index.month.unique().values[0],
-               'year': demand.index.year.unique().values[0],
     }
     print(f'\n--> OPF mode: {mode} - Analyzing {mode} # {to_disp[mode]}')
     # Get new snapshots and set them up
     snapshots = demand.index
     # Truncate wind and solar give whole dataset
-    wind_by_period = wind.loc[snapshots]
-    solar_by_period = solar.loc[snapshots]
+    if wind is not None or solar is not None:
+        wind_by_period = wind.loc[snapshots]
+        solar_by_period = solar.loc[snapshots]
+    else:
+        wind_by_period = pd.DataFrame(index=snapshots)
+        solar_by_period = pd.DataFrame(index=snapshots)
     # Fill constrains on the grid -> wind, solar, nuclear
     net = fill_constrains_grid(net, 
                                snapshots, 
@@ -86,7 +89,7 @@ def run_unit_commitment(net, mode, demand, wind, solar):
     # Run Linear OPF
     rel = net.lopf(net.snapshots, pyomo=False, solver_name='cbc')
     if rel[1] != 'optimal': 
-        print ('Not convergenced......')
+        print ('** OPF failed to find a solution **')
         sys.exit()
     # Get the values
     dispatch = net.generators_t.p.copy()

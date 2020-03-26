@@ -131,12 +131,16 @@ dmypy.json
 # Add iPython checkpoints
 .ipynb_checkpoints
 
-# Avoid OPF rel
-OPF_rel/*
-
 # Delete DS_Store
 .DS_Store
 
 # Avoid 7 years generation
 generation_chronics_7_years.py
 .idea
+
+# Texax data
+Texas_dispatch_6_years/*
+reference_data/*
+L2RPN_2020_ieee_118_pypsa_simplified/*
+__pycache__/*
+OPF_rel/*
