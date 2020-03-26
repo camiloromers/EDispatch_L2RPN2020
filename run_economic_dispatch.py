@@ -43,9 +43,6 @@ def run_disptach(pypsa_net,
                  MONTH_END=None,
                 ):
 
-    # OPF will run until the last month registered in load or demand
-    if MONTH_END is None:
-        MONTH_END = load.index.month.unique()[-1]
 
     # Load demand
     year_data = 2007
@@ -55,6 +52,10 @@ def run_disptach(pypsa_net,
     # Resample load according to RESCALED_MIN
     load_resampled = load.resample(f'{str(rescaled_min)}min').apply(lambda x: x[0])
     load_resampled *= load_factor_q
+
+    # OPF will run until the last month registered in load or demand
+    if MONTH_END is None:
+        MONTH_END = load.index.month.unique().values[-1]
 
     # Validate gen constraints to be imposed in the opf
     gen_constraints = reformat_gen_constraints(gen_constraints, 
