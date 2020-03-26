@@ -76,10 +76,10 @@ def run_disptach(pypsa_net,
         results = []
         for _, demand_by_period in period_dict[mode_opf]:
             results.append(run_unit_commitment(pypsa_net,
-                                                mode_opf,
-                                                demand_by_period,
-                                                gen_constraints,
-                                                )
+                                               mode_opf,
+                                               demand_by_period,
+                                               gen_constraints,
+                                              )
                             )
 
     # Unpack dispatch over list to concatenate partial dfs

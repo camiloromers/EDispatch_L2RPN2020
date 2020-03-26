@@ -80,7 +80,7 @@ def run_unit_commitment(net, mode, demand, gen_constraints):
                'month': demand.index.month.unique().values[0],
     }
     m_period = demand.index.month.unique().values[0]
-    print(f'\n--> OPF mode: {mode} - Analyzing {mode} {m_period} # {to_disp[mode]}')
+    print(f'\n--> OPF single formulation by: {mode} - Analyzing {mode} # {to_disp[mode]} of month {m_period}')
     # Get new snapshots and set them up
     snapshots = demand.index
     # Truncate gen constraints
