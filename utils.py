@@ -16,6 +16,18 @@ def format_dates(year, month):
     END_DATE = datetime.strptime(end_date, '%Y-%m-%d %H:%M')
     return FROM_DATE, END_DATE
 
+def validate_gen_constraints(gen_constraints, rescaled_min, snapshots):
+    for k, df in gen_constraints.items():
+        if df is None:
+            # Create an empty df only with index
+            gen_constraints[k] = pd.DataFrame(index=snapshots)
+        else:
+            # Reindex df and resample according to desired mins
+            gen_constraints[k].index = snapshots
+            gen_constraints[k] = gen_constraints[k].resample(f'{str(rescaled_min)}min').apply(lambda x: x[0])
+    return gen_constraints
+
+
 def import_data(data_path, from_date, end_date, every_min):
     dateparse = lambda x: pd.datetime.strptime(x, '%Y-%m-%d %H:%M:%S')
     load = pd.read_csv(os.path.join(data_path, 'load_' + str(from_date.year) + '.csv.bz2'), 

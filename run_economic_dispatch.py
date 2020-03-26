@@ -13,6 +13,7 @@ from .utils import rescale_gen_param
 from .utils import run_unit_commitment
 # from utils import interpolate
 from .utils import add_noise_gen
+from .utils import validate_gen_constraints
 # from utils import generate_prod_voltage
 # from utils import generate_reactive_loads
 # from utils import generate_hazard_maintenance
@@ -38,7 +39,7 @@ def run_disptach(pypsa_net,
                  load,
                  mode_opf=MODE_OPF, 
                  rescaled_min=RESCALED_MIN,
-                 gen_constraints={'p_max_pu':pd.DataFrame(), 'p_min_pu':pd.DataFrame()},
+                 gen_constraints={'p_max_pu': None, 'p_min_pu': None},
                  year_data=YEAR_OPF,
                  MONTH_START=1,
                  MONTH_END=1,
@@ -53,13 +54,8 @@ def run_disptach(pypsa_net,
     load_resampled = load.resample(f'{str(rescaled_min)}min').apply(lambda x: x[0])
     load_resampled *= load_factor
 
-    # Resample constraints if they exists
-    gen_constraints['p_max_pu'].index = snapshots
-    if not gen_constraints['p_max_pu'].empty:
-        gen_constraints['p_max_pu'] = gen_constraints['p_max_pu'].resample(f'{str(rescaled_min)}min').apply(lambda x: x[0])
-    gen_constraints['p_min_pu'].index = snapshots
-    if not gen_constraints['p_min_pu'].empty:
-        gen_constraints['p_min_pu'] = gen_constraints['p_min_pu'].resample(f'{str(rescaled_min)}min').apply(lambda x: x[0])
+    # Validate gen constraints to be imposed in the opf
+    val_gen_const = validate_gen_constraints(gen_constraints, rescaled_min, snapshots)
 
     # OPF will run until the last month registered in load or demand
     if MONTH_END is None:
@@ -81,7 +77,7 @@ def run_disptach(pypsa_net,
           results.append(run_unit_commitment(pypsa_net,
                                              mode_opf,
                                              demand_by_period,
-                                             gen_constraints,
+                                             val_gen_const,
                                              )
                         )
 
