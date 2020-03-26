@@ -7,13 +7,12 @@ import numpy as np
 import pypsa
 from datetime import datetime, timedelta
 
-sys.path.append(os.getcwd())
 # from utils import format_dates
 # from utils import import_data
-from utils import rescale_gen_param
-from utils import run_unit_commitment
+from .utils import rescale_gen_param
+from .utils import run_unit_commitment
 # from utils import interpolate
-from utils import add_noise_gen
+from .utils import add_noise_gen
 # from utils import generate_prod_voltage
 # from utils import generate_reactive_loads
 # from utils import generate_hazard_maintenance
