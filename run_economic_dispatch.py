@@ -37,6 +37,7 @@ def run_disptach(pypsa_net,
                  load,
                  mode_opf=MODE_OPF, 
                  rescaled_min=RESCALED_MIN,
+                 gen_constraints={'p_max_pu':pd.DataFrame(), 'p_min_pu':pd.DataFrame()},
                  year_data=YEAR_OPF,
                  MONTH_START=1,
                  MONTH_END=1,
@@ -50,6 +51,14 @@ def run_disptach(pypsa_net,
     # Resample load according to RESCALED_MIN
     load_resampled = load.resample(f'{str(rescaled_min)}min').apply(lambda x: x[0])
     load_resampled *= load_factor
+
+    # Resample constraints if they exists
+    if not gen_constraints['p_max_pu'].empty:
+        gen_constraints['p_max_pu'].index = snapshots
+        gen_constraints['p_max_pu'] = gen_constraints['p_max_pu'].resample(f'{str(rescaled_min)}min').apply(lambda x: x[0])
+    if not gen_constraints['p_min_pu'].empty:
+        gen_constraints['p_min_pu'].index = snapshots
+        gen_constraints['p_min_pu'] = gen_constraints['p_min_pu'].resample(f'{str(rescaled_min)}min').apply(lambda x: x[0])
 
     # OPF will run until the last month registered in load or demand
     if MONTH_END is None:
@@ -71,8 +80,7 @@ def run_disptach(pypsa_net,
           results.append(run_unit_commitment(pypsa_net,
                                              mode_opf,
                                              demand_by_period,
-                                             wind=None,
-                                             solar=None,
+                                             gen_constraints,
                                              )
                         )
 

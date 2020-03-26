@@ -42,7 +42,7 @@ def rescale_gen_param(net, every_min, grid_params=5):
     net.generators.loc[:, ['ramp_limit_up', 'ramp_limit_down']] *= steps
     return net
 
-def fill_constrains_grid(net, snapshots, trunc_load, trunc_wind, trunc_solar):
+def fill_constraints_grid(net, snapshots, trunc_load, trunc_gen_constraints):
     # Reset any previous value save it in the grid
     net.loads_t.p_set = net.loads_t.p_set.iloc[0:0, 0:0]
     net.generators_t.p_max_pu = net.generators_t.p_max_pu.iloc[0:0, 0:0]
@@ -51,11 +51,9 @@ def fill_constrains_grid(net, snapshots, trunc_load, trunc_wind, trunc_solar):
     # partial_load, wind, solar = partial_load, wind.loc[snapshots], solar.loc[snapshots]
     # Set loads
     net.loads_t.p_set = pd.concat([trunc_load])
-    # Set max renewable energy
-    wind_pu = trunc_wind / trunc_wind.max(axis=0)
-    solar_pu = trunc_solar / trunc_solar.max(axis=0)
-    net.generators_t.p_max_pu = pd.concat([wind_pu, solar_pu], axis=1)
-    net.generators_t.p_min_pu = pd.concat([wind_pu, solar_pu], axis=1)
+    # Set truncated gen constraints
+    net.generators_t.p_max_pu = pd.concat([trunc_gen_constraints['p_max_pu']], axis=1)
+    net.generators_t.p_min_pu = pd.concat([trunc_gen_constraints['p_min_pu']], axis=1)
     # Constrain nuclear power plants
     nuclear_names = net.generators[net.generators.carrier == 'nuclear'].index.tolist()
     for c in nuclear_names:
@@ -63,7 +61,7 @@ def fill_constrains_grid(net, snapshots, trunc_load, trunc_wind, trunc_solar):
         net.generators_t.p_min_pu[c] = 0.4
     return net
 
-def run_unit_commitment(net, mode, demand, wind=None, solar=None):
+def run_unit_commitment(net, mode, demand, gen_constraints):
     # Show info when running opf
     to_disp = {'day': demand.index.day.unique().values[0],
                'week': demand.index.week.unique().values[0],
@@ -72,19 +70,14 @@ def run_unit_commitment(net, mode, demand, wind=None, solar=None):
     print(f'\n--> OPF mode: {mode} - Analyzing {mode} # {to_disp[mode]}')
     # Get new snapshots and set them up
     snapshots = demand.index
-    # Truncate wind and solar give whole dataset
-    if wind is not None or solar is not None:
-        wind_by_period = wind.loc[snapshots]
-        solar_by_period = solar.loc[snapshots]
-    else:
-        wind_by_period = pd.DataFrame(index=snapshots)
-        solar_by_period = pd.DataFrame(index=snapshots)
-    # Fill constrains on the grid -> wind, solar, nuclear
-    net = fill_constrains_grid(net, 
+    # Truncate gen constraints
+    for k, df in gen_constraints.items():
+        gen_constraints[k] = df.loc[snapshots] 
+    # Prepare grid for OPF
+    net = fill_constraints_grid(net, 
                                snapshots, 
                                demand, 
-                               wind_by_period, 
-                               solar_by_period
+                               gen_constraints,
                                )
     # Run Linear OPF
     rel = net.lopf(net.snapshots, pyomo=False, solver_name='cbc')
