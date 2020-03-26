@@ -32,15 +32,13 @@ RESCALED_MIN = 5    # Every timr OPF will be run it
 YEAR_OPF = 2007
 MONTH_START = 1     # Initial mmonth
 MONTH_END = 1       # End month 
-COMPENSATE_REACTIVE =   # Scale for load to compensate reactive power
-
 
 def run_disptach(pypsa_net, 
                  load,
                  mode_opf='day', 
                  rescaled_min=5,
                  gen_constraints={'p_max_pu': None, 'p_min_pu': None},
-                 load_factor=1.025 ,
+                 load_factor_q=1.025 ,
                  MONTH_START=1,
                  MONTH_END=None,
                 ):
@@ -56,7 +54,7 @@ def run_disptach(pypsa_net,
 
     # Resample load according to RESCALED_MIN
     load_resampled = load.resample(f'{str(rescaled_min)}min').apply(lambda x: x[0])
-    load_resampled *= load_factor
+    load_resampled *= load_factor_q
 
     # Validate gen constraints to be imposed in the opf
     gen_constraints = reformat_gen_constraints(gen_constraints, 
