@@ -20,29 +20,28 @@ from .utils import reformat_gen_constraints
 # from utils import generate_forecasts
 
 
-# Vars to set up...
-PYPSA_CASE = './L2RPN_2020_ieee_118_pypsa_simplified'
-REF_DATA_DIR = 'reference_data'
-DESTINATION_PATH = './OPF_rel/'
+# # Vars to set up...
+# PYPSA_CASE = './L2RPN_2020_ieee_118_pypsa_simplified'
+# REF_DATA_DIR = 'reference_data'
+# DESTINATION_PATH = './OPF_rel/'
 
-MODE_OPF = 'day'    # Can be: 'day', 'week', 'month', 'year'
-POSSIBLE_MODE_OPF = ['day', 'week', 'month']
+# MODE_OPF = 'day'    # Can be: 'day', 'week', 'month', 'year'
+# POSSIBLE_MODE_OPF = ['day', 'week', 'month']
 
-RESCALED_MIN = 5    # Every timr OPF will be run it
-YEAR_OPF = 2007
-MONTH_START = 1     # Initial mmonth
-MONTH_END = 1       # End month 
+# RESCALED_MIN = 5    # Every timr OPF will be run it
+# YEAR_OPF = 2007
+# MONTH_START = 1     # Initial mmonth
+# MONTH_END = 1       # End month 
 
 def run_disptach(pypsa_net, 
                  load,
                  mode_opf='day', 
                  rescaled_min=5,
                  gen_constraints={'p_max_pu': None, 'p_min_pu': None},
-                 load_factor_q=1.025 ,
                  MONTH_START=1,
                  MONTH_END=None,
+                 load_factor_q=1.025,
                 ):
-
 
     # Load demand
     year_data = 2007
@@ -154,20 +153,28 @@ def run_disptach(pypsa_net,
     return prod_p_with_noise
 
 
+# Vars to set up...
+PYPSA_CASE = './L2RPN_2020_ieee_118_pypsa_simplified'
+REF_DATA_DIR = 'reference_data'
+DESTINATION_PATH = './OPF_rel/'
+POSSIBLE_MODE_OPF = ['day', 'week', 'month']
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Launch the evaluation of the Grid2Op ("Grid To Operate") code.')
     parser.add_argument('--grid_path', default=PYPSA_CASE, type=str,
                         help='PyPSA grid dir')
     parser.add_argument('--conso_full_path', default='REF_DATA_DIR/load_2007.csv.bz2', type=str,
                        help='Specify the consumption or demanda full name')
+    parser.add_argument('--gen_const', type=str,
+                        help='Specify full path of gen max and min constraints')
     parser.add_argument('--dest_path', default=DESTINATION_PATH, type=str,
                          help='Specify the destination dir')
     parser.add_argument('--mode_opf', default=MODE_OPF, type=str,
                         help='Optimization mode, for the opf (possible values are {})'.format(POSSIBLE_MODE_OPF))
     parser.add_argument('--rescaled_min', default=RESCALED_MIN, type=int,
                         help='Run the optimizer every "rescaled_min" minutes (default 5)'),
-    parser.add_argument('--year_data', default='2007', type=str,
-                        help='Year generated for consumption')
+    parser.add_argument('--month_start', default=1, type=int),
+    parser.add_argument('--month_end', default=None, type=int),
 
     args = parser.parse_args()
     if not args.mode_opf.lower() in POSSIBLE_MODE_OPF:
@@ -188,18 +195,29 @@ if __name__ == "__main__":
     # Load consumption data without index
     print ('Reading input data -> load...')
     demand = pd.read_csv(args.conso_full_path)
-    demand.drop('datetime', axis=1, inplace=True)
+    # demand.drop('datetime', axis=1, inplace=True)
+
+    # Check if gen contraints are given
+    if args.gen_const:
+        gen_max_constraints = pd.read_csv(os.path.join(args.gen_const), 'gen_max_pu.csv.bz2')
+        gen_min_constraints = pd.read_csv(os.path.join(args.gen_const), 'gen_min_pu.csv.bz2')
+        gen_const = {'p_max_pu': gen_max_constraints, 
+                     'p_min_pu': gen_min_constraints}
+    else:
+        gen_const={'p_max_pu': None, 'p_min_pu': None}
+
 
     # Run Economic Dispatch
     prod_p_dispatch = run_disptach(net,
                                    demand,
                                    mode_opf=args.mode_opf.lower(), 
                                    rescaled_min=rescaled_min,
-                                   year_data=args.year_data,
+                                   gen_constraints=gen_const,
+                                   MONTH_START=args.month_start,
+                                   MONTH_END=args.month_end,
                                    )
 
     destination_path = os.path.abspath(args.dest_path)
-    print (destination_path)
     if not os.path.exists(destination_path):
         os.makedirs(destination_path)
 
