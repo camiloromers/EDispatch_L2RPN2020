@@ -54,11 +54,11 @@ def run_disptach(pypsa_net,
     load_resampled *= load_factor
 
     # Resample constraints if they exists
+    gen_constraints['p_max_pu'].index = snapshots
     if not gen_constraints['p_max_pu'].empty:
-        gen_constraints['p_max_pu'].index = snapshots
         gen_constraints['p_max_pu'] = gen_constraints['p_max_pu'].resample(f'{str(rescaled_min)}min').apply(lambda x: x[0])
+    gen_constraints['p_min_pu'].index = snapshots
     if not gen_constraints['p_min_pu'].empty:
-        gen_constraints['p_min_pu'].index = snapshots
         gen_constraints['p_min_pu'] = gen_constraints['p_min_pu'].resample(f'{str(rescaled_min)}min').apply(lambda x: x[0])
 
     # OPF will run until the last month registered in load or demand
