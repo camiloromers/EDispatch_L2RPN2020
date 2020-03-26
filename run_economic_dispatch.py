@@ -6,6 +6,8 @@ import pandas as pd
 import numpy as np
 import pypsa
 from datetime import datetime, timedelta
+
+sys.path.append(os.getcwd())
 # from utils import format_dates
 # from utils import import_data
 from utils import rescale_gen_param
