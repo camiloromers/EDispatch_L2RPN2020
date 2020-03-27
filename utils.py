@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 #     return FROM_DATE, END_DATE
 
 def get_params(num, params):
-    if not params['snapshots']:
+    if params['snapshots'] == []:
         snapshots = pd.date_range(start=f'{2007}-01-01', periods=num, freq='5min')
         params['snapshots'] = snapshots
     if not params['step_opf_min'] % 5 == 0:
