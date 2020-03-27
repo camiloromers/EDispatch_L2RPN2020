@@ -34,7 +34,8 @@ def main_run_disptach(pypsa_net,
                      ):
     
     # Define params for opf
-    params = get_params(load.shape[0], params)
+    len_chronics = load.shape[0]
+    params = get_params(len_chronics, params)
     # Resample input data and set temp index to handle to run
     # OPF by days, week, months
     load_, gen_constraints_ = preprocess_input_data(load, gen_constraints, params)

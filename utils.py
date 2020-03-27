@@ -17,13 +17,18 @@ from datetime import datetime, timedelta
 #     return FROM_DATE, END_DATE
 
 def get_params(num, params):
-    if params['snapshots'] == []:
-        snapshots = pd.date_range(start=f'{2007}-01-01', periods=num, freq='5min')
-        params['snapshots'] = snapshots
-    if not params['step_opf_min'] % 5 == 0:
+    snaps = params['snapshots']
+    step_opf = int(params['step_opf_min'])
+    mode_opf = params['mode_opf'].lower()
+    # Check some inputs
+    if not step_opf % 5 == 0:
         raise RuntimeError("\"step_opf_min\" argument should be multiple of 5")
-    if not params['mode_opf'].lower() in ['day', 'week', 'month']:
+    if not mode_opf in ['day', 'week', 'month']:
         raise RuntimeError("Please provide a valid opf mode (day, week, month")
+    # Update inputs
+    if snaps == []:
+        snapshots = pd.date_range(start=f'{2007}-01-01', periods=num, freq='5min')
+        params.update({'snapshots': snapshots})
     return params
 
 def preprocess_input_data(load, gen_constraints, params):
