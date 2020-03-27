@@ -16,15 +16,15 @@ from datetime import datetime, timedelta
 #     END_DATE = datetime.strptime(end_date, '%Y-%m-%d %H:%M')
 #     return FROM_DATE, END_DATE
 
-def get_params(params):
+def get_params(num, params):
     if not params['snapshots']:
-        snapshots = pd.date_range(start=f'{2007}-01-01', periods=load.shape[0], freq='5min')
+        snapshots = pd.date_range(start=f'{2007}-01-01', periods=num, freq='5min')
+        params['snapshots'] = snapshots
     if not params['step_opf_min'] % 5 == 0:
         raise RuntimeError("\"step_opf_min\" argument should be multiple of 5")
     if not params['mode_opf'].lower() in ['day', 'week', 'month']:
         raise RuntimeError("Please provide a valid opf mode (day, week, month")
     return params
-
 
 def preprocess_input_data(load, gen_constraints, params):
     """Prepare input data (load and gen constraints) adding 
@@ -56,11 +56,14 @@ def reformat_load(load, params):
     Returns:
         pd.DataFrame -- Aggregated reformated and resampled demand
     """    
+    snapshots = params['snapshots']
+    step_opf = params['step_opf_min']
+    q_compensation = params['reactive_comp']
     # Set temp index to load and constraints
-    load.index = params['snapshots']
+    load.index = snapshots
     # Resample data and constrains according to params
-    load_resampled = load.resample(f'{str(params['step_opf_min'])}min').apply(lambda x: x[0])
-    load_resampled *= params['reactive_comp']
+    load_resampled = load.resample(f'{str(step_opf)}min').apply(lambda x: x[0])
+    load_resampled *= q_compensation
     # -- Agregate load in case it is not
     if load_resampled.columns == 'agg_load':
         return load_resampled
@@ -84,38 +87,19 @@ def reformat_gen_constraints(gen_constraints, params):
     Returns:
         {dict} -- Reformated dict containing dfs
     """    
+    snapshots = params['snapshots']
+    step_opf = params['step_opf_min']
     # Set index in gen contraints 
     for k, df in gen_constraints.items():
         if df is None:
             # Create an empty gen contraints in case None is pass
-            gen_constraints[k] = pd.DataFrame(index=params['snapshots'])  
+            gen_constraints[k] = pd.DataFrame(index = snapshots)  
         else:
             # Set temp index to gen contraints
-            gen_constraints[k].index = params['snapshots']
+            gen_constraints[k].index = snapshots
         # Resampled to desired opf
-        gen_constraints[k] = gen_constraints[k].resample(f'{str(params['step_opf_min'])}min').apply(lambda x: x[0])   
+        gen_constraints[k] = gen_constraints[k].resample(f'{str(step_opf)}min').apply(lambda x: x[0])   
     return gen_constraints
-
-
-# def import_data(data_path, from_date, end_date, every_min):
-#     dateparse = lambda x: pd.datetime.strptime(x, '%Y-%m-%d %H:%M:%S')
-#     load = pd.read_csv(os.path.join(data_path, 'load_' + str(from_date.year) + '.csv.bz2'), 
-#                        parse_dates=['datetime'], date_parser=dateparse)
-#     solar = pd.read_csv(os.path.join(data_path, 'selected_solar.csv.bz2'), 
-#                         parse_dates=['datetime'], date_parser=dateparse)
-#     wind = pd.read_csv(os.path.join(data_path, 'selected_wind.csv.bz2'), 
-#                        parse_dates=['datetime'], date_parser=dateparse)
-#     # Set corresponding index
-#     load.set_index('datetime', inplace=True)
-#     solar.set_index('datetime', inplace=True)
-#     wind.set_index('datetime', inplace=True)
-#     # Truncate according to max dates
-#     load_rscl = load.loc[from_date : end_date].resample(f'{str(every_min)}min').apply(lambda x: x[0])
-#     solar_rscl = solar.loc[from_date : end_date].resample(f'{str(every_min)}min').apply(lambda x: x[0])
-#     wind_rscl = wind.loc[from_date : end_date].resample(f'{str(every_min)}min').apply(lambda x: x[0])
-#     load = load.loc[from_date : end_date]
-#     snapshots = load.index
-#     return wind_rscl, solar_rscl, load_rscl, snapshots
 
 def adapt_gen_prop(net, every_min, grid_params=5):
     """Scale gen ramps up/down according to step_opf_min param
@@ -157,7 +141,7 @@ def get_indivitual_snapshots_per_mode(params):
     }
     return periods[mode_opf]
 
-def prepare_net_for_opf(net, load_indiv, gen_const_indiv):
+def prepare_net_for_opf(net, load_per_period, gen_const_per_period):
     """Function to set for individual OPF formulation problem:
             - snapshots
             - Aggregated load for all snapshots
@@ -177,15 +161,15 @@ def prepare_net_for_opf(net, load_indiv, gen_const_indiv):
     net.generators_t.p_min_pu = net.generators_t.p_min_pu.iloc[0:0, 0:0]
     # Set snapshot
     # ++  ++  ++ 
-    snapshots = trunc_load.index
+    snapshots = load_per_period.index
     net.set_snapshots(snapshots)
     # Set consumption to the grid
     # ++  ++  ++  ++  ++  ++  ++
-    net.loads_t.p_set = pd.concat([load_indiv])
+    net.loads_t.p_set = pd.concat([load_per_period])
     # Set generations pmax, pmin constraints
     # ++  ++  ++  ++  ++  ++  ++  ++  ++  ++
-    net.generators_t.p_max_pu = pd.concat([gen_const_indiv['p_max_pu']], axis=1)
-    net.generators_t.p_min_pu = pd.concat([gen_const_indiv['p_min_pu']], axis=1)
+    net.generators_t.p_max_pu = pd.concat([gen_const_per_period['p_max_pu']], axis=1)
+    net.generators_t.p_min_pu = pd.concat([gen_const_per_period['p_min_pu']], axis=1)
     # Constrain nuclear power plants
     nuclear_names = net.generators[net.generators.carrier == 'nuclear'].index.tolist()
     for c in nuclear_names:
@@ -202,7 +186,7 @@ def run_opf(net, demand, gen_constraints, params):
     mode = params['mode_opf']
     print(f'\n--> OPF single formulation by: {mode} - Analyzing {mode} # {to_disp[mode]}')
     # Prepare grid for OPF
-    net = prepare_net_for_opf(net, demand, gen_const)
+    net = prepare_net_for_opf(net, demand, gen_constraints)
     # Run Linear OPF
     rel = net.lopf(net.snapshots, pyomo=False, solver_name='cbc')
     if rel[1] != 'optimal': 
@@ -229,13 +213,33 @@ def add_noise_gen(dispatch, gen_cap, noise_factor=None):
     # stats = df.agg(['max', 'min'], axis=0)
     # range_ = stats.loc['max'] - stats.loc['min']
     variance_per_col = gen_cap * noise_factor
-    for col in df:
+    for col in dispatch:
         # Check for values greater than zero 
         # (means unit has been distpached)
-        only_dispatched_steps = df[col][df[col] > 0]
+        only_dispatched_steps = dispatch[col][dispatch[col] > 0]
         noise = np.random.normal(0, variance_per_col.loc[col], only_dispatched_steps.shape[0])
-        df.loc[only_dispatched_steps.index, col] = only_dispatched_steps + noise
-    return df.round(2)
+        dispatch.loc[only_dispatched_steps.index, col] = only_dispatched_steps + noise
+    return dispatch.round(2)
+
+# def import_data(data_path, from_date, end_date, every_min):
+#     dateparse = lambda x: pd.datetime.strptime(x, '%Y-%m-%d %H:%M:%S')
+#     load = pd.read_csv(os.path.join(data_path, 'load_' + str(from_date.year) + '.csv.bz2'), 
+#                        parse_dates=['datetime'], date_parser=dateparse)
+#     solar = pd.read_csv(os.path.join(data_path, 'selected_solar.csv.bz2'), 
+#                         parse_dates=['datetime'], date_parser=dateparse)
+#     wind = pd.read_csv(os.path.join(data_path, 'selected_wind.csv.bz2'), 
+#                        parse_dates=['datetime'], date_parser=dateparse)
+#     # Set corresponding index
+#     load.set_index('datetime', inplace=True)
+#     solar.set_index('datetime', inplace=True)
+#     wind.set_index('datetime', inplace=True)
+#     # Truncate according to max dates
+#     load_rscl = load.loc[from_date : end_date].resample(f'{str(every_min)}min').apply(lambda x: x[0])
+#     solar_rscl = solar.loc[from_date : end_date].resample(f'{str(every_min)}min').apply(lambda x: x[0])
+#     wind_rscl = wind.loc[from_date : end_date].resample(f'{str(every_min)}min').apply(lambda x: x[0])
+#     load = load.loc[from_date : end_date]
+#     snapshots = load.index
+#     return wind_rscl, solar_rscl, load_rscl, snapshots
 
 # def interpolate(df, ref_index=None, method='cubic'):
 #     # Create dataframe with full index
