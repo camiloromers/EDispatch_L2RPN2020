@@ -26,7 +26,7 @@ def get_params(num, params):
     if not mode_opf.lower() in ['day', 'week', 'month']:
         raise RuntimeError("Please provide a valid opf mode (day, week, month")
     # Update inputs
-    if snaps is None:
+    if snaps == []:
         snapshots = pd.date_range(start=f'{2007}-01-01', periods=num, freq='5min')
         params.update({'snapshots': snapshots})
     return params

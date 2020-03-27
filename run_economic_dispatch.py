@@ -22,10 +22,10 @@ from .utils import preprocess_input_data
 # from .utils import generate_hazard_maintenance
 # from .utils import generate_forecasts
 
-params={'snapshots': None,
+params={'snapshots': [],
         'step_opf_min': 5,
         'mode_opf': 'day',
-        'reactive_comp': 1.025
+        'reactive_comp': 1.025,
         }
 
 gen_const = gen_constraints={'p_max_pu': None, 'p_min_pu': None}
