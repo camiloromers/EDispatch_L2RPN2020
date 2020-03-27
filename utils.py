@@ -19,11 +19,11 @@ from datetime import datetime, timedelta
 def get_params(num, params):
     snaps = params['snapshots']
     step_opf = int(params['step_opf_min'])
-    mode_opf = params['mode_opf'].lower()
+    mode_opf = params['mode_opf']
     # Check some inputs
     if not step_opf % 5 == 0:
         raise RuntimeError("\"step_opf_min\" argument should be multiple of 5")
-    if not mode_opf in ['day', 'week', 'month']:
+    if not mode_opf.lower() in ['day', 'week', 'month']:
         raise RuntimeError("Please provide a valid opf mode (day, week, month")
     # Update inputs
     if snaps == []:
@@ -45,9 +45,11 @@ def preprocess_input_data(load, gen_constraints, params):
     Returns:
         {pd.DataFrame} -- Reformated load dataframe
         {dict} -- Reformated dict with dfs for gen constraints
-    """    
+    """  
+    # Get load after adapting to step_opf_min  
     new_load = reformat_load(load, params)
-    new_gen_const = reformat_gen_constraints(gen_constraints, params)
+    # Get gen contraints after adapting to step_opf_min
+    new_gen_const = reformat_gen_constraints(gen_constraints, params, new_load.index)
     return new_load, new_gen_const
     
 def reformat_load(load, params):
@@ -70,14 +72,14 @@ def reformat_load(load, params):
     load_resampled = load.resample(f'{str(step_opf)}min').apply(lambda x: x[0])
     load_resampled *= q_compensation
     # -- Agregate load in case it is not
-    if load_resampled.columns == 'agg_load':
+    if load_resampled.columns.tolist() == ['agg_load']:
         return load_resampled
     else:
         agg_load = load_resampled.sum(axis=1).to_frame()
         agg_load.columns = ['agg_load']
         return agg_load
 
-def reformat_gen_constraints(gen_constraints, params):
+def reformat_gen_constraints(gen_constraints, params, new_snaps):
     """Reformat dataframes associated in gen_contraints
     {p_max_pu, p_min_pu} adding tempoary datetime index and resampled them
     acoording to params specified.
@@ -88,22 +90,24 @@ def reformat_gen_constraints(gen_constraints, params):
                                   the dataframes with the limits. Dataframes header should have 
                                   same gen index PyPSA name.
         params {dict} -- Dictionary holding all set of params for opf
+        new_snaps {index} -- load resampled index
     
     Returns:
         {dict} -- Reformated dict containing dfs
     """    
     snapshots = params['snapshots']
-    step_opf = params['step_opf_min']
+    resampled_snapshots = new_snaps
     # Set index in gen contraints 
-    for k, df in gen_constraints.items():
-        if df is None:
+    for k in gen_constraints:
+        if gen_constraints[k] is None:
             # Create an empty gen contraints in case None is pass
-            gen_constraints[k] = pd.DataFrame(index = snapshots)  
+            gen_constraints.update({k: pd.DataFrame(index=snapshots)})
         else:
             # Set temp index to gen contraints
             gen_constraints[k].index = snapshots
-        # Resampled to desired opf
-        gen_constraints[k] = gen_constraints[k].resample(f'{str(step_opf)}min').apply(lambda x: x[0])   
+            gen_constraints.update({k: gen_constraints[k]})
+        # Resampled to desired step run opf
+        gen_constraints.update({k: gen_constraints[k].loc[resampled_snapshots]})
     return gen_constraints
 
 def adapt_gen_prop(net, every_min, grid_params=5):
@@ -127,24 +131,13 @@ def adapt_gen_prop(net, every_min, grid_params=5):
     net.generators.loc[:, ['ramp_limit_up', 'ramp_limit_down']] *= steps
     return net
 
-def get_indivitual_snapshots_per_mode(params):
-    """Returns individual grouped snapshots to use 
-    them as new index for individual formulation 
-    
-    Arguments:
-        params {dict} -- Dictionary holding all set of params for op
-    
-    Returns:
-        [dict] -- [Grouped snapshots per mode opf]
-    """    
-    tot_snapshots = params['snapshots']
-    mode_opf = params['mode_opf']
+def get_indivitual_snapshots_per_mode(idx, mode):  
     # Define all posibilities mode
-    periods = {'day': tot_snapshots.groupby(tot_snapshots.day),
-               'week': tot_snapshots.groupby(tot_snapshots.week),
-               'month': tot_snapshots.groupby(tot_snapshots.month)
+    periods = {'day': idx.groupby(idx.day).values(),
+               'week': idx.groupby(idx.week).values(),
+               'month': idx.groupby(idx.month).values()
     }
-    return periods[mode_opf]
+    return periods[mode]
 
 def prepare_net_for_opf(net, load_per_period, gen_const_per_period):
     """Function to set for individual OPF formulation problem:
