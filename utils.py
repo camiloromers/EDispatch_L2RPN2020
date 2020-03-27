@@ -16,15 +16,84 @@ from datetime import datetime, timedelta
 #     END_DATE = datetime.strptime(end_date, '%Y-%m-%d %H:%M')
 #     return FROM_DATE, END_DATE
 
-def reformat_gen_constraints(gen_constraints, rescaled_min, snapshots):
+def get_params(params):
+    if not params['snapshots']:
+        snapshots = pd.date_range(start=f'{2007}-01-01', periods=load.shape[0], freq='5min')
+    if not params['step_opf_min'] % 5 == 0:
+        raise RuntimeError("\"step_opf_min\" argument should be multiple of 5")
+    if not params['mode_opf'].lower() in ['day', 'week', 'month']:
+        raise RuntimeError("Please provide a valid opf mode (day, week, month")
+    return params
+
+
+def preprocess_input_data(load, gen_constraints, params):
+    """Prepare input data (load and gen constraints) adding 
+    temporary datetime index and resampled according params needs.
+
+    Arguments:
+        load {pd.DataFrame} -- Demand 
+        gen_constraints {dict} -- Contains two keys {p_max_pu, p_min_pu} which associate
+                                  the dataframes with the limits. Dataframes header should have 
+                                  same gen index PyPSA name.                
+        params {dict} -- Dictionary holding all set of params for opf
+    
+    Returns:
+        {pd.DataFrame} -- Reformated load dataframe
+        {dict} -- Reformated dict with dfs for gen constraints
+    """    
+    new_load = reformat_load(load, params)
+    new_gen_const = reformat_gen_constraints(gen_constraints, params)
+    return new_load, new_gen_const
+    
+def reformat_load(load, params):
+    """Reformat load dataframe adding temp datetime index
+    and resampled it according the params step_opf_min specified.
+
+    Arguments:
+        load {pd.DataFrame} -- Demand
+        params {dict} -- Dictionary holding all set of params for opf
+    
+    Returns:
+        pd.DataFrame -- Aggregated reformated and resampled demand
+    """    
+    # Set temp index to load and constraints
+    load.index = params['snapshots']
+    # Resample data and constrains according to params
+    load_resampled = load.resample(f'{str(params['step_opf_min'])}min').apply(lambda x: x[0])
+    load_resampled *= params['reactive_comp']
+    # -- Agregate load in case it is not
+    if load_resampled.columns == 'agg_load':
+        return load_resampled
+    else:
+        agg_load = load_resampled.sum(axis=1).to_frame()
+        agg_load.columns = ['agg_load']
+        return agg_load
+
+def reformat_gen_constraints(gen_constraints, params):
+    """Reformat dataframes associated in gen_contraints
+    {p_max_pu, p_min_pu} adding tempoary datetime index and resampled them
+    acoording to params specified.
+    dictionary .
+    
+    Arguments:
+        gen_constraints {dict} -- Contains two keys {p_max_pu, p_min_pu} which associate
+                                  the dataframes with the limits. Dataframes header should have 
+                                  same gen index PyPSA name.
+        params {dict} -- Dictionary holding all set of params for opf
+    
+    Returns:
+        {dict} -- Reformated dict containing dfs
+    """    
+    # Set index in gen contraints 
     for k, df in gen_constraints.items():
         if df is None:
-            # Create an empty df only with index
-            gen_constraints[k] = pd.DataFrame(index=snapshots)
+            # Create an empty gen contraints in case None is pass
+            gen_constraints[k] = pd.DataFrame(index=params['snapshots'])  
         else:
-            # Reindex df and resample according to desired mins
-            gen_constraints[k].index = snapshots
-            gen_constraints[k] = gen_constraints[k].resample(f'{str(rescaled_min)}min').apply(lambda x: x[0])
+            # Set temp index to gen contraints
+            gen_constraints[k].index = params['snapshots']
+        # Resampled to desired opf
+        gen_constraints[k] = gen_constraints[k].resample(f'{str(params['step_opf_min'])}min').apply(lambda x: x[0])   
     return gen_constraints
 
 
@@ -48,24 +117,75 @@ def reformat_gen_constraints(gen_constraints, rescaled_min, snapshots):
 #     snapshots = load.index
 #     return wind_rscl, solar_rscl, load_rscl, snapshots
 
-def rescale_gen_param(net, every_min, grid_params=5):
+def adapt_gen_prop(net, every_min, grid_params=5):
+    """Scale gen ramps up/down according to step_opf_min param
+    (The original grid is prepared that every params are set for
+    every 5 minutes)
+    
+    Arguments:
+        net {PyPSA object} -- 
+        every_min {int} -- Minutes user wants to run OPF assuming
+                           data comes from every 5 min
+    
+    Keyword Arguments:
+        grid_params {int} -- Referece time gen properties is designed
+    
+    Returns:
+        net {PyPSA object} -- Grid with scaled ramps
+    """    
     # Adapt ramps according to the time 
     steps = every_min / grid_params
     net.generators.loc[:, ['ramp_limit_up', 'ramp_limit_down']] *= steps
     return net
 
-def fill_constraints_grid(net, snapshots, trunc_load, trunc_gen_constraints):
+def get_indivitual_snapshots_per_mode(params):
+    """Returns individual grouped snapshots to use 
+    them as new index for individual formulation 
+    
+    Arguments:
+        params {dict} -- Dictionary holding all set of params for op
+    
+    Returns:
+        [dict] -- [Grouped snapshots per mode opf]
+    """    
+    tot_snapshots = params['snapshots']
+    mode_opf = params['mode_opf']
+    # Define all posibilities mode
+    periods = {'day': tot_snapshots.groupby(tot_snapshots.day),
+               'week': tot_snapshots.groupby(tot_snapshots.week),
+               'month': tot_snapshots.groupby(tot_snapshots.month)
+    }
+    return periods[mode_opf]
+
+def prepare_net_for_opf(net, load_indiv, gen_const_indiv):
+    """Function to set for individual OPF formulation problem:
+            - snapshots
+            - Aggregated load for all snapshots
+            - Gen constraints for all snapshots
+    
+    Arguments:
+        net {PyPSA object}
+        load_indiv {pd.DataFrame} -- Load df per day, week or month
+        gen_const_indiv {dict} -- Gen constraints per day, week or month
+    
+    Returns:
+        net [PyPSA object] -- Grid with all modifications
+    """    
     # Reset any previous value save it in the grid
     net.loads_t.p_set = net.loads_t.p_set.iloc[0:0, 0:0]
     net.generators_t.p_max_pu = net.generators_t.p_max_pu.iloc[0:0, 0:0]
-    # Set the snapshots
+    net.generators_t.p_min_pu = net.generators_t.p_min_pu.iloc[0:0, 0:0]
+    # Set snapshot
+    # ++  ++  ++ 
+    snapshots = trunc_load.index
     net.set_snapshots(snapshots)
-    # partial_load, wind, solar = partial_load, wind.loc[snapshots], solar.loc[snapshots]
-    # Set loads
-    net.loads_t.p_set = pd.concat([trunc_load])
-    # Set truncated gen constraints
-    net.generators_t.p_max_pu = pd.concat([trunc_gen_constraints['p_max_pu']], axis=1)
-    net.generators_t.p_min_pu = pd.concat([trunc_gen_constraints['p_min_pu']], axis=1)
+    # Set consumption to the grid
+    # ++  ++  ++  ++  ++  ++  ++
+    net.loads_t.p_set = pd.concat([load_indiv])
+    # Set generations pmax, pmin constraints
+    # ++  ++  ++  ++  ++  ++  ++  ++  ++  ++
+    net.generators_t.p_max_pu = pd.concat([gen_const_indiv['p_max_pu']], axis=1)
+    net.generators_t.p_min_pu = pd.concat([gen_const_indiv['p_min_pu']], axis=1)
     # Constrain nuclear power plants
     nuclear_names = net.generators[net.generators.carrier == 'nuclear'].index.tolist()
     for c in nuclear_names:
@@ -73,26 +193,16 @@ def fill_constraints_grid(net, snapshots, trunc_load, trunc_gen_constraints):
         net.generators_t.p_min_pu[c] = 0.4
     return net
 
-def run_unit_commitment(net, mode, demand, gen_constraints):
+def run_opf(net, demand, gen_constraints, params):
     # Show info when running opf
     to_disp = {'day': demand.index.day.unique().values[0],
                'week': demand.index.week.unique().values[0],
                'month': demand.index.month.unique().values[0],
     }
-    m_period = demand.index.month.unique().values[0]
-    print(f'\n--> OPF single formulation by: {mode} - Analyzing {mode} # {to_disp[mode]} of month {m_period}')
-    # Get new snapshots and set them up
-    snapshots = demand.index
-    # Truncate gen constraints
-    trunc_gen_const = gen_constraints.copy()
-    for k, df in trunc_gen_const.items():
-        trunc_gen_const[k] = df.loc[snapshots] 
+    mode = params['mode_opf']
+    print(f'\n--> OPF single formulation by: {mode} - Analyzing {mode} # {to_disp[mode]}')
     # Prepare grid for OPF
-    net = fill_constraints_grid(net, 
-                                snapshots, 
-                                demand, 
-                                trunc_gen_const,
-                               )
+    net = prepare_net_for_opf(net, demand, gen_const)
     # Run Linear OPF
     rel = net.lopf(net.snapshots, pyomo=False, solver_name='cbc')
     if rel[1] != 'optimal': 
@@ -101,6 +211,31 @@ def run_unit_commitment(net, mode, demand, gen_constraints):
     # Get the values
     dispatch = net.generators_t.p.copy()
     return dispatch
+
+def add_noise_gen(dispatch, gen_cap, noise_factor=None):
+    """Add noise to dispatch result
+    
+    Arguments:
+        dispatch {pd.DataFrame} -- Df holding dispatch result
+        gen_cap {pd.DataFrame} -- Max capacity for generators
+    
+    Keyword Arguments:
+        noise_factor {float} -- Noise factor applied for every gen
+    
+    Returns:
+        {pd.DataFrame} -- Dispatch with noise
+    """    
+    # Get range of value per columns in df
+    # stats = df.agg(['max', 'min'], axis=0)
+    # range_ = stats.loc['max'] - stats.loc['min']
+    variance_per_col = gen_cap * noise_factor
+    for col in df:
+        # Check for values greater than zero 
+        # (means unit has been distpached)
+        only_dispatched_steps = df[col][df[col] > 0]
+        noise = np.random.normal(0, variance_per_col.loc[col], only_dispatched_steps.shape[0])
+        df.loc[only_dispatched_steps.index, col] = only_dispatched_steps + noise
+    return df.round(2)
 
 # def interpolate(df, ref_index=None, method='cubic'):
 #     # Create dataframe with full index
@@ -115,19 +250,6 @@ def run_unit_commitment(net, mode, demand, gen_constraints):
 #     criteria_small_value = 1e-4
 #     interpolated_df[interpolated_df < criteria_small_value] = 0
 #     return interpolated_df.round(2)
-
-def add_noise_gen(df, gen_cap, noise_factor=None):
-    # Get range of value per columns in df
-    # stats = df.agg(['max', 'min'], axis=0)
-    # range_ = stats.loc['max'] - stats.loc['min']
-    variance_per_col = gen_cap * noise_factor
-    for col in df:
-        # Check for values greater than zero 
-        # (means unit has been distpached)
-        only_dispatched_steps = df[col][df[col] > 0]
-        noise = np.random.normal(0, variance_per_col.loc[col], only_dispatched_steps.shape[0])
-        df.loc[only_dispatched_steps.index, col] = only_dispatched_steps + noise
-    return df.round(2)
 
 # def generate_prod_voltage(vol, vol_var=1.2, ref_index=None):
 #     fill_vol = pd.concat([vol] * ref_index.shape[0], axis=1)
