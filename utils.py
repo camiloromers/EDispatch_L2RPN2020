@@ -193,9 +193,9 @@ def prepare_net_for_opf(net, load_per_period, gen_const_per_period):
     net.loads_t.p_set = pd.concat([load_per_period])
     # Set generations pmax, pmin constraints
     # ++  ++  ++  ++  ++  ++  ++  ++  ++  ++
-    if gen_const_per_period['p_max_pu'] is not None:
+    if 'p_max_pu' in gen_const_per_period:
         net.generators_t.p_max_pu = pd.concat([gen_const_per_period['p_max_pu']], axis=1)
-    if gen_const_per_period['p_min_pu'] is not None:
+    if 'p_min_pu' in gen_const_per_period:
         net.generators_t.p_min_pu = pd.concat([gen_const_per_period['p_min_pu']], axis=1)
     # Constrain nuclear power plants
     nuclear_names = net.generators[net.generators.carrier == 'nuclear'].index.tolist()
