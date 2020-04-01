@@ -3,6 +3,7 @@ import numpy as np
 import calendar
 import os
 import sys
+import warnings
 import pypsa
 from datetime import datetime, timedelta
 
@@ -69,6 +70,10 @@ def preprocess_input_data(load, gen_constraints, params):
     [type]
         [description]
     """    
+    # Check lenght between load and gen constraints
+    for k in gen_constraints:
+        if gen_constraints[k].shape[0] != load.shape[0]:
+            raise RuntimeError(f'Gen constraint in [{k}] does not have same lenght as input data')
     # Get load after adapting to step_opf_min  
     new_load = reformat_load(load, params)
     # Get gen contraints after adapting to step_opf_min
@@ -138,20 +143,27 @@ def reformat_gen_constraints(gen_constraints, params, new_snaps):
         gen_constraints.update({k: gen_constraints[k].loc[resampled_snapshots]})
     return gen_constraints
 
-def adapt_gen_prop(net, every_min, grid_params=5):
-    """[summary]
-    
+def preprocess_net(net, every_min, input_data_resolution=5):
+    """ The function mainly performs two tasks:
+        - Remove all previous loads modelled in net
+          and create a new single load named as agg_load
+        - Adapts the ramps up/down according to the configured
+          time to run OPF
     Parameters
     ----------
-    net : [type]
-        [description]
-    every_min : [type]
-        [description]
-    grid_params : int, optional
-        [description], by default 5
-    """      
-    # Adapt ramps according to the time 
-    steps = every_min / grid_params
+    net : PyPSA object
+    every_min : int
+        [The number of time OPF skips input data resolution to read and run]
+    input_data_resolution : int, optional
+        [Minutes - input data resolution], by default 5
+    """    
+    # # Remove all loads modelled in PyPSA
+    # # and create one single agg_load.
+    # net.mremove('Load', names=net.loads.index)  
+    # net.add('Load', name='agg_load', bus=net.buses.index.tolist())
+    # Adapt ramps according to the skipping time
+    # configured to run the OPF. 
+    steps = every_min / input_data_resolution
     net.generators.loc[:, ['ramp_limit_up', 'ramp_limit_down']] *= steps
     return net
 
@@ -197,11 +209,11 @@ def prepare_net_for_opf(net, load_per_period, gen_const_per_period):
         net.generators_t.p_max_pu = pd.concat([gen_const_per_period['p_max_pu']], axis=1)
     if 'p_min_pu' in gen_const_per_period:
         net.generators_t.p_min_pu = pd.concat([gen_const_per_period['p_min_pu']], axis=1)
-    # Constrain nuclear power plants
-    nuclear_names = net.generators[net.generators.carrier == 'nuclear'].index.tolist()
-    for c in nuclear_names:
-        net.generators_t.p_max_pu[c] = 1.
-        net.generators_t.p_min_pu[c] = 0.4
+    # # Constrain nuclear power plants
+    # nuclear_names = net.generators[net.generators.carrier == 'nuclear'].index.tolist()
+    # for c in nuclear_names:
+    #     net.generators_t.p_max_pu[c] = 1.
+    #     net.generators_t.p_min_pu[c] = 0.4
     return net
 
 def run_opf(net, demand, gen_constraints, params):
