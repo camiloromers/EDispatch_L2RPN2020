@@ -7,67 +7,71 @@ import numpy as np
 import pypsa
 from datetime import datetime, timedelta
 
-# from .utils import format_dates
-# from .utils import import_data
-from .utils import get_params
-from .utils import preprocess_net
-from .utils import run_opf
-from .utils import get_indivitual_snapshots_per_mode
-# from utils import interpolate
-from .utils import add_noise_gen
-from .utils import reformat_gen_constraints
-from .utils import preprocess_input_data
-# from .utils import generate_prod_voltage
-# from .utils import generate_reactive_loads
-# from .utils import generate_hazard_maintenance
-# from .utils import generate_forecasts
+from utils import update_gen_constrains, update_params
+from utils import preprocess_net
+from utils import run_opf
+from utils import get_grouped_snapshots
+from utils import add_noise_gen
+from utils import reformat_gen_constraints
+from utils import preprocess_input_data
+from utils import interpolate_dispatch
 
-# from utils import get_params
-# from utils import preprocess_net
-# from utils import run_opf
-# from utils import get_indivitual_snapshots_per_mode
-# # from utils import interpolate
-# from utils import add_noise_gen
-# from utils import reformat_gen_constraints
-# from utils import preprocess_input_data
-
-params={'snapshots': [],
-        'step_opf_min': 5,
-        'mode_opf': 'day',
-        'reactive_comp': 1.025,
-        }
-
-gen_const = gen_constraints={'p_max_pu': None, 'p_min_pu': None}
+# params={'snapshots': [],
+#         'step_opf_min': 5,
+#         'mode_opf': 'day',
+#         'reactive_comp': 1.025,
+#         }
 
 def main_run_disptach(pypsa_net, 
                       load,
-                      params=params,
-                      gen_constraints=gen_const,
-                     ):
-    
-    # Define params for opf
-    len_chronics = load.shape[0]
-    params = get_params(len_chronics, params)
-    # Resample input data and set temp index to handle to run
-    # OPF by days, week, months
-    print ('Preprocessing PyPSA grid and input data..')
-    load_, gen_constraints_ = preprocess_input_data(load, gen_constraints, params)
-    # Prepare the grid parameters for OPF
-    pypsa_net = preprocess_net(pypsa_net, params['step_opf_min'])
-    # Define individual snapshots to formulmate
-    # one single opf formulation per period
-    grouped_snapshots = get_indivitual_snapshots_per_mode(load_.index, params['mode_opf'])
+                      gen_constraints={'p_max_pu': None, 'p_min_pu': None},
+                      params={}):
 
+    # Update gen constrains dict with 
+    # values passed by the users and params
+    gen_constraints = update_gen_constrains(gen_constraints)  
+    params = update_params(load.shape[0], params)
+
+    print ('Preprocessing input data..')
+    # Preprocess input data:
+    #   - Add date range as index 
+    #   - Check whether gen constraints has same lenght as load
+    load_, gen_constraints_ = preprocess_input_data(load, gen_constraints, params)
+    tot_snap = load_.index
+
+    print ('Adapting PyPSA grid with parameters..')
+    # Preprocess net parameters:
+    #   - Change ramps according to params step_opf_min (assuming original 
+    #     values are normalizing for every 5 minutes)
+    #   - It checks for all gen units if commitable variables is False
+    #     (commitable as False helps to create a LP problem for PyPSA)
+    pypsa_net = preprocess_net(pypsa_net, params['step_opf_min'])
+
+    months = tot_snap.month.unique()
     start = time.time()
     results = []
-    gen_const_2_opf = dict.fromkeys(gen_constraints)
-    for snaps in grouped_snapshots:
-        # Select partial load and gen contraints
-        load_2_opf = load_.loc[snaps]
-        gen_const_2_opf.update({k: v.loc[snaps] for k, v in gen_constraints_.items()})
-        # Run opf function
-        results.append(run_opf(pypsa_net, load_2_opf, gen_const_2_opf, params))
-        print ('-- opf succeeded    >Please check always => Objective value (should be greater than zero!')
+    for month in months:
+        # Get snapshots per month
+        snap_per_month = tot_snap[tot_snap.month == month]
+        # Filter input data per month
+        load_per_month = load_.loc[snap_per_month]
+        # Get gen constraints separated and filter by month
+        g_max_pu, g_min_pu = gen_constraints_['p_max_pu'], gen_constraints_['p_min_pu']
+        g_max_pu_per_month = g_max_pu.loc[snap_per_month]
+        g_min_pu_per_month = g_min_pu.loc[snap_per_month]
+        # Get grouped snapsshots given monthly snapshots
+        snap_per_mode = get_grouped_snapshots(snap_per_month, params['mode_opf'])
+        for snaps in snap_per_mode:
+            # Truncate input data per mode (day, week, month)
+            load_per_mode = load_per_month.loc[snaps]
+            gen_max_pu_per_mode = g_max_pu_per_month.loc[snaps]
+            gen_min_pu_per_mode = g_min_pu_per_month.loc[snaps]
+            # Run opf given in specified mode
+            results.append(run_opf(pypsa_net, 
+                                   load_per_mode, 
+                                   gen_max_pu_per_mode, 
+                                   gen_min_pu_per_mode,
+                                   params,))
 
     # Unpack individual dispatchs
     opf_prod = pd.DataFrame()
@@ -76,10 +80,12 @@ def main_run_disptach(pypsa_net,
 
     # Sort by datetime
     opf_prod.sort_index(inplace=True)
-
     # Create complete prod_p dataframe and interpolate missing rows
     prod_p = opf_prod.copy()
-
+    # Apply interpolation in case of step_opf_min greater than 5 min
+    if params['step_opf_min'] > 5:
+        print ('Interpolating dispatch to have 5 minutes resolution..')
+        prod_p = interpolate_dispatch(prod_p)
     # Add noise to results
     gen_cap = pypsa_net.generators.p_nom
     prod_p_with_noise = add_noise_gen(prod_p, gen_cap, noise_factor=0.001)
